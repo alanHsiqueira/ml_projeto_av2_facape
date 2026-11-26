@@ -1,7 +1,8 @@
 # G02 — Previsão de perdas de água em municípios do Nordeste
 
 > Projeto AV2 de Machine Learning · FACAPE 2026.2  
-> Pasta: `grupos/grupo-02-perdas-agua-ods6` · E2: auditoria inicial concluída, com ressalvas
+> Pasta: `grupos/grupo-02-perdas-agua-ods6` · E2: auditoria concluída, com ressalvas ·
+> E3: EDA e pipeline de preparação executáveis
 
 ## Integrantes
 
@@ -78,18 +79,53 @@
 
 ## 4. Como reproduzir
 
-O pipeline e o ambiente reprodutível serão concluídos em etapas posteriores.
-Após a implementação, as instruções serão:
+Pré-requisito: baixar os dois ZIPs oficiais da seção 3 e extrair a pasta
+`Água - Base Municipal` de cada um em `data/raw/` (os arquivos não são
+versionados). O pipeline confere o SHA-256 dos dois arquivos de indicadores e
+para se eles diferirem dos auditados na E2.
 
 ```bash
-python3 -m venv .venv
+# a partir de grupos/grupo-02-perdas-agua-ods6/ (Python 3.11+)
+python -m venv .venv
+.venv/Scripts/activate            # Windows (Linux/macOS: source .venv/bin/activate)
 python -m pip install -r requirements.txt
-python -m src.pipeline --config configs/base.yaml
+python -m src.pipeline --config configs/base.yaml   # ~5 s: carga + split + preparação
+make eda                                            # ~30 s: reexecuta o notebook de EDA
 ```
 
-O comando Docker será documentado e validado na E6. O pipeline ainda não foi
-implementado nem executado; portanto, tempo de execução e saídas ainda não
-estão disponíveis.
+Sem `make` (Windows), o equivalente de `make eda` é:
+
+```bash
+python -c "import nbformat; from nbclient import NotebookClient; p='notebooks/01-eda-perdas-agua.ipynb'; nb=nbformat.read(p, 4); NotebookClient(nb, timeout=600, kernel_name='python3', resources={'metadata': {'path': 'notebooks'}}).execute(); nbformat.write(nb, p)"
+```
+
+Também é possível abrir o notebook no VS Code/Jupyter e executar todas as células.
+
+Etapas implementadas até a E3: `dados` (carga, recorte e pareamento
+2023 → 2024) e `features` (split treino/teste e preparação sem vazamento). As
+etapas `modelos` (E4) e `avaliacao` (E5) aparecem como pendentes, sem erro.
+Saídas: `data/processed/` (base pareada, treino/teste originais e preparados;
+não versionado), `reports/tables/preparacao-*.csv` e `reports/environment.json`.
+O comando Docker será validado na E6.
+
+## E3 — EDA e preparação
+
+- **Notebook:** [`notebooks/01-eda-perdas-agua.ipynb`](notebooks/01-eda-perdas-agua.ipynb),
+  com 6 visualizações (5 exigidas + 1 por UF), cada uma com “o que isso muda na
+  modelagem”. A EDA usa **só o treino**; figuras em `reports/figures/figura-eda-*.png`.
+- **Split antes de qualquer `fit`:** 1.166 municípios de treino e 292 de teste
+  (20 %, seed 42), estratificado por quintis do alvo.
+- **Preparação** (`src/features/preparacao.py`, ajustada só no treino):
+  winsorização P1–P99 → mediana + indicador de ausência → padronização.
+  53 preditores (52 indicadores de 2023 + perda de 2023); IAG0005 e IAG3002
+  excluídos por ausência > 20 % no treino.
+- **Nulos:** “Não Calc.” vira ausente, nunca zero. A ausência é informativa:
+  municípios sem IAG3001 têm perda mediana de 54,6 % vs. 34,7 %.
+- **Desbalanceamento:** proporção acima do limite de alerta = 64 % (30 %),
+  43 % (40 %) e 30 % (50 %), igual em treino e teste; sem reamostragem.
+- **Referência a superar:** a persistência (repetir 2023) tem MAE de 8,0 p.p. no
+  treino; 54 saltos > 30 p.p. (4,6 %) respondem por ~27 % desse erro.
+- Justificativas e alternativas rejeitadas: [`docs/decisoes-tecnicas.md`](docs/decisoes-tecnicas.md), seção 4.
 
 ## 5. Resultados principais
 
@@ -124,6 +160,11 @@ para outros anos; a ressalva está detalhada no dicionário de dados.
 - **Uso de IA generativa:** assistente de IA foi usado como apoio para organizar
   e redigir os documentos iniciais. O grupo deve revisar as decisões e validar
   todas as informações sobre dados e metodologia.
+- **Uso de IA generativa na E3:** assistente de IA (Claude) gerou o código de
+  carga/preparação, o notebook de EDA e o rascunho das justificativas. Verificação:
+  o pipeline foi executado do zero; a auditoria da E2 foi reexecutada e reproduziu
+  as tabelas versionadas; os números citados nos textos foram conferidos com as
+  saídas do código; os hashes dos arquivos baixados conferem com os da E2.
 
 ## Estrutura desta pasta
 
@@ -132,8 +173,11 @@ grupo-02-perdas-agua-ods6/
 ├── README.md
 ├── configs/base.yaml
 ├── data/raw/                 # não versionar os dados brutos
-├── src/                      # carregamento, preparação, modelos e avaliação
-├── notebooks/                # EDA e experimentos
+├── src/
+│   ├── data/                 # auditoria (E2) e carga da base pareada (E3)
+│   ├── features/             # split e preparação sem vazamento (E3)
+│   └── pipeline.py           # ponto de entrada
+├── notebooks/                # 01-eda-perdas-agua.ipynb (E3)
 ├── experiments/runs.csv
 ├── reports/                  # tabelas e figuras geradas
 ├── article/                  # artigo IMRaD
