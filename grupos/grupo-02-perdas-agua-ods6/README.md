@@ -1,7 +1,7 @@
 # G02 — Previsão de perdas de água em municípios brasileiros
 
 > Projeto AV2 de Machine Learning · FACAPE 2026.2  
-> Pasta: `grupos/grupo-02-perdas-agua-ods6` · Entrega atual: E1
+> Pasta: `grupos/grupo-02-perdas-agua-ods6` · E2: auditoria inicial concluída, com ressalvas
 
 ## Integrantes
 
@@ -44,21 +44,23 @@
 
 ## 3. Dados e licença
 
-- **Fonte prevista:** SINISA — módulo Abastecimento de Água, Base Municipal de
-  2024 e dados históricos, se forem metodologicamente compatíveis.
+- **Fonte:** SINISA — módulo Abastecimento de Água, Bases Municipais com anos
+  de referência 2023 e 2024.
 - **Instituição:** Ministério das Cidades.
-- **Portal:** https://portal1.snis.gov.br/
-- **Data de acesso e download:** a registrar na E2, quando os arquivos forem
-  obtidos e auditados.
-- **Licença/termos de uso:** a confirmar na fonte oficial antes de reutilizar
-  ou redistribuir os dados.
-- **Volume e cobertura temporal:** a medir e documentar na E2.
-- **Alvo previsto:** percentual municipal anual de perdas de água; nome,
-  unidade e definição operacional serão confirmados no dicionário oficial.
-- **Dados pessoais:** o plano é usar dados agregados por município; a presença
-  de campos pessoais ou identificáveis será verificada antes do uso.
-- Detalhes da auditoria serão registrados em
+- **Portal de referência 2023:** https://www.gov.br/cidades/pt-br/acesso-a-informacao/acoes-e-programas/saneamento/sinisa/resultados-sinisa
+- **Portal de referência 2024:** https://www.gov.br/cidades/pt-br/acesso-a-informacao/acoes-e-programas/saneamento/sinisa/resultados-sinisa/resultados-sinisa-2025
+- **Produtos de água:** [planilhas SINISA referência 2023](https://www.gov.br/cidades/pt-br/acesso-a-informacao/acoes-e-programas/saneamento/sinisa/arquivos/SINISA_Resultados_Ref2023.zip) e [planilhas SINISA referência 2024](https://www.gov.br/cidades/pt-br/acesso-a-informacao/acoes-e-programas/saneamento/sinisa/resultados-sinisa/SINISA_Resultados_Ref2024.zip).
+- **Consulta das páginas:** 2026-11-25; reconferência das fontes oficiais em 2026-11-26. A data original de download dos arquivos ainda precisa ser confirmada pelo grupo.
+- **Licença/termos de uso:** o rodapé do portal declara CC BY-ND 3.0 para o conteúdo do site ([licença](https://creativecommons.org/licenses/by-nd/3.0/)); não foi localizada licença específica das planilhas nem confirmação de que a declaração geral se aplique a elas. O grupo não redistribuirá os arquivos originais ou bases derivadas enquanto isso não for esclarecido. Detalhes e limitações no dicionário de dados.
+- **Volume observado:** 5.241 municípios na aba-alvo de 2023 e 5.144 em 2024; 4.574 pares preliminares com IAG2013 numérico e entre 0–100% nos dois anos. A base de 2023 tem 55 indicadores distintos, atendendo ao critério alternativo de pelo menos 40 atributos; a amostra pareada fica abaixo de 5.000 registros.
+- **Alvo:** IAG2013 — Perdas totais de água na distribuição, em percentual. A fórmula, cobertura e limitações metodológicas estão registradas no dicionário de dados.
+- **Dados pessoais:** não identificamos campos de pessoa natural nas planilhas
+  municipais de indicadores examinadas. Campos de identificação do município
+  e do prestador não serão usados como preditores.
+- Detalhes da auditoria estão registrados em
   [`docs/dicionario-de-dados.md`](docs/dicionario-de-dados.md).
+- O perfil inicial das variáveis de 2023 está em
+  [`reports/tables/perfil-preditores-ref2023.csv`](reports/tables/perfil-preditores-ref2023.csv).
 
 ## 4. Como reproduzir
 
@@ -72,33 +74,36 @@ python -m src.pipeline --config configs/base.yaml
 ```
 
 O comando Docker será documentado e validado na E6. O pipeline ainda não foi
-implementado nem executado nesta E1; portanto, tempo de execução e saídas ainda
-não estão disponíveis.
+implementado nem executado; portanto, tempo de execução e saídas ainda não
+estão disponíveis.
 
 ## 5. Resultados principais
 
 Ainda não há resultados de modelos. A avaliação planejada é de regressão, com
 MAE como métrica principal e comparação com uma referência que repete a perda
-observada no ano anterior. Essa referência depende da confirmação de uma série
-temporal compatível na E2.
+observada no ano anterior. O par 2023→2024 será tratado como exploratório:
+embora a fórmula do alvo seja a mesma, as notas metodológicas têm critérios de
+não cálculo diferentes. Não se afirma comparabilidade plena nem generalização
+para outros anos; a ressalva está detalhada no dicionário de dados.
 
 ## 6. Limitações iniciais
 
 - A cobertura municipal, os anos disponíveis e a comparabilidade metodológica
-  ainda serão auditados.
+  limitam a interpretação: há apenas uma transição anual e uma diferença nos
+  critérios de não cálculo do alvo entre as referências.
 - Indicadores agregados não descrevem necessariamente as condições de cada
   trecho da rede nem identificam a causa das perdas.
 - Uma previsão não substitui inspeção, medição local ou avaliação por
   profissionais responsáveis.
-- A disponibilidade e os termos de uso dos arquivos precisam ser confirmados
-  na fonte oficial.
+- A licença específica das planilhas não foi localizada; não redistribuir os
+  arquivos ou assumir que a licença geral do site se aplica a eles.
 
 ## 7. Uso responsável
 
 - **Não usar para:** decisão automática, penalização de municípios ou
   prestadores, nem como diagnóstico definitivo da rede.
-- **Dados pessoais:** a análise será municipal e agregada; isso será verificado
-  na auditoria dos arquivos antes do uso.
+- **Dados pessoais:** a auditoria inicial não identificou dados de pessoa
+  natural nas planilhas municipais; reavaliar se outras fontes forem usadas.
 - **Desempenho por subgrupo:** será avaliado após identificar cobertura
   suficiente, por exemplo, entre regiões e períodos; não há resultados nesta
   etapa.
