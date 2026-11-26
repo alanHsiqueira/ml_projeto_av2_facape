@@ -1,4 +1,4 @@
-# G02 — Previsão de perdas de água em municípios brasileiros
+# G02 — Previsão de perdas de água em municípios do Nordeste
 
 > Projeto AV2 de Machine Learning · FACAPE 2026.2  
 > Pasta: `grupos/grupo-02-perdas-agua-ods6` · E2: auditoria inicial concluída, com ressalvas
@@ -50,17 +50,31 @@
 - **Portal de referência 2023:** https://www.gov.br/cidades/pt-br/acesso-a-informacao/acoes-e-programas/saneamento/sinisa/resultados-sinisa
 - **Portal de referência 2024:** https://www.gov.br/cidades/pt-br/acesso-a-informacao/acoes-e-programas/saneamento/sinisa/resultados-sinisa/resultados-sinisa-2025
 - **Produtos de água:** [planilhas SINISA referência 2023](https://www.gov.br/cidades/pt-br/acesso-a-informacao/acoes-e-programas/saneamento/sinisa/arquivos/SINISA_Resultados_Ref2023.zip) e [planilhas SINISA referência 2024](https://www.gov.br/cidades/pt-br/acesso-a-informacao/acoes-e-programas/saneamento/sinisa/resultados-sinisa/SINISA_Resultados_Ref2024.zip).
-- **Consulta das páginas:** 2026-11-25; reconferência das fontes oficiais em 2026-11-26. A data original de download dos arquivos ainda precisa ser confirmada pelo grupo.
+- **Arquivos usados:** pasta `Água - Base Municipal` de cada ZIP; planilha de
+  indicadores de 2023 (entrada) e de 2024 (alvo, versão “Retificação”).
+- **Recorte:** Região **Nordeste**, transição 2023 → 2024. A RIDE do Polo
+  Petrolina/PE e Juazeiro/BA (8 municípios) e PE+BA (572) são analisados como
+  subgrupos; sozinhos não têm linhas suficientes para treinar e validar. A
+  comparação entre recortes está no dicionário de dados.
+- **Consulta das páginas:** 2026-11-25; reconferência das fontes oficiais em 2026-11-26. Download dos arquivos em 23/11/2026.
 - **Licença/termos de uso:** o rodapé do portal declara CC BY-ND 3.0 para o conteúdo do site ([licença](https://creativecommons.org/licenses/by-nd/3.0/)); não foi localizada licença específica das planilhas nem confirmação de que a declaração geral se aplique a elas. O grupo não redistribuirá os arquivos originais ou bases derivadas enquanto isso não for esclarecido. Detalhes e limitações no dicionário de dados.
-- **Volume observado:** 5.241 municípios na aba-alvo de 2023 e 5.144 em 2024; 4.574 pares preliminares com IAG2013 numérico e entre 0–100% nos dois anos. A base de 2023 tem 55 indicadores distintos, atendendo ao critério alternativo de pelo menos 40 atributos; a amostra pareada fica abaixo de 5.000 registros.
+- **Volume observado:** 1.458 municípios do Nordeste com IAG2013 numérico e
+  entre 0–100% nos dois anos (de 1.668 no arquivo de 2023); 52 indicadores
+  candidatos a preditor. A base de 2023 tem 55 indicadores distintos, atendendo
+  ao critério alternativo de pelo menos 40 atributos; a amostra fica abaixo de
+  5.000 registros. O Piauí tem cobertura de só 9,4% e não é representado.
 - **Alvo:** IAG2013 — Perdas totais de água na distribuição, em percentual. A fórmula, cobertura e limitações metodológicas estão registradas no dicionário de dados.
 - **Dados pessoais:** não identificamos campos de pessoa natural nas planilhas
   municipais de indicadores examinadas. Campos de identificação do município
   e do prestador não serão usados como preditores.
 - Detalhes da auditoria estão registrados em
   [`docs/dicionario-de-dados.md`](docs/dicionario-de-dados.md).
-- O perfil inicial das variáveis de 2023 está em
-  [`reports/tables/perfil-preditores-ref2023.csv`](reports/tables/perfil-preditores-ref2023.csv).
+- As tabelas da auditoria são geradas por
+  `python -m src.data.auditoria_sinisa` (requer pandas e openpyxl) em
+  `reports/tables/` (perfil dos preditores do Nordeste, cobertura por recorte
+  e por UF, hashes). O perfil nacional anterior continua em
+  [`reports/tables/perfil-preditores-ref2023.csv`](reports/tables/perfil-preditores-ref2023.csv)
+  como referência.
 
 ## 4. Como reproduzir
 
@@ -104,9 +118,9 @@ para outros anos; a ressalva está detalhada no dicionário de dados.
   prestadores, nem como diagnóstico definitivo da rede.
 - **Dados pessoais:** a auditoria inicial não identificou dados de pessoa
   natural nas planilhas municipais; reavaliar se outras fontes forem usadas.
-- **Desempenho por subgrupo:** será avaliado após identificar cobertura
-  suficiente, por exemplo, entre regiões e períodos; não há resultados nesta
-  etapa.
+- **Desempenho por subgrupo:** o erro será reportado separadamente para a
+  RIDE Petrolina–Juazeiro, para PE+BA e por UF; não há resultados nesta etapa.
+  Não usar o modelo para o Piauí, sub-representado na base.
 - **Uso de IA generativa:** assistente de IA foi usado como apoio para organizar
   e redigir os documentos iniciais. O grupo deve revisar as decisões e validar
   todas as informações sobre dados e metodologia.
