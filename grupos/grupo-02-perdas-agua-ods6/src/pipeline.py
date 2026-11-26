@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Pipeline ponta a ponta do grupo G02 (preencher).
+"""Pipeline ponta a ponta do grupo G02 - perdas de agua no Nordeste (ODS 6.4).
 
 Uso:
     python -m src.pipeline --config configs/base.yaml
@@ -11,8 +11,10 @@ Contrato deste esqueleto:
   3. executa as etapas em ordem: dados -> features -> modelos -> avaliacao;
   4. grava tabelas em `reports/tables/` e figuras em `reports/figures/`.
 
-As etapas abaixo sao intencionalmente vazias: implemente-as mantendo a assinatura.
+Estado: `dados` e `features` implementadas na E3; `modelos` (E4) e `avaliacao`
+(E5) ainda pendentes -- sao puladas com aviso, sem falhar a execucao.
 Nao crie um `notebook` paralelo com a logica do pipeline -- o Docker executa AQUI.
+O notebook de EDA apenas LE as saidas desta etapa.
 """
 from __future__ import annotations
 
@@ -116,27 +118,111 @@ def _requirements() -> list[str]:
 # -------------------------------------------------------------------- etapas
 
 
-def etapa_dados(cfg: dict) -> None:
-    """Carrega o dado bruto e valida colunas esperadas.
+def _csv(df, caminho: Path) -> None:
+    """CSV com fim de linha LF (evita diff falso entre Windows e Linux)."""
+    df.to_csv(caminho, index=False, lineterminator="\n")
 
-    Implemente:
-      * ler `dados.raw` + `dados.arquivo` (CSV/Parquet/JSON);
-      * conferir presenca da coluna alvo e das colunas usadas;
-      * aplicar filtros de recorte documentados no dicionario de dados;
-      * gravar em `dados.processed`.
+
+def etapa_dados(cfg: dict) -> None:
+    """Le o SINISA 2023/2024, aplica o recorte da E2 e grava a base pareada.
+
+    Saida: `data/processed/base-nordeste.csv` (uma linha por municipio). Nenhum
+    `fit` acontece aqui: so leitura, conversao de "Nao Calc." em NaN e filtros.
     """
-    raise NotImplementedError("etapa_dados: implemente a carga e a validacao")
+    from src.data.carregar import ALVO_T, ALVO_T1, colunas_indicadores, montar_base
+
+    processed = RAIZ / cfg["dados"]["processed"]
+    processed.mkdir(parents=True, exist_ok=True)
+    base = montar_base(RAIZ, cfg["dados"])
+    _csv(base, processed / "base-nordeste.csv")
+    print(
+        f"[dados] {len(base)} municipios | {len(colunas_indicadores(base))} indicadores 2023 "
+        f"+ {ALVO_T} | alvo {ALVO_T1}: media {base[ALVO_T1].mean():.2f} %"
+    )
 
 
 def etapa_features(cfg: dict) -> None:
-    """Constroi o ColumnTransformer e o split de treino/teste.
+    """Split treino/teste, selecao de preditores e preparacao SEM vazamento.
 
-    Implemente:
-      * split ANTES de qualquer fit de transformacao (evita vazamento);
-      * imputacao, escalonamento e encoding vindos de `preprocessamento`;
-      * retorno do pipeline de features pronto para o modelo.
+    1. split estratificado por quintis do alvo, ANTES de qualquer fit;
+    2. regra de % de ausentes medida so no treino;
+    3. preprocessador (recorte -> imputacao -> escala) ajustado so no treino e
+       apenas aplicado (`transform`) ao teste.
+
+    Saidas em `data/processed/`: treino.csv, teste.csv (valores originais),
+    treino-preparado.csv, teste-preparado.csv e preditores.json.
+    Tabelas em `reports/tables/`: preparacao-*.csv.
     """
-    raise NotImplementedError("etapa_features: implemente o pre-processamento")
+    import pandas as pd
+
+    from src.data.carregar import ALVO_T, ALVO_T1, COLUNAS_ID, colunas_indicadores
+    from src.features.preparacao import (
+        construir_preprocessador,
+        diagnostico_desbalanceamento,
+        dividir_treino_teste,
+        selecionar_preditores,
+        tabela_tratamento,
+    )
+
+    dados = cfg["dados"]
+    processed = RAIZ / dados["processed"]
+    tabelas = RAIZ / cfg["saidas"]["tabelas"]
+    origem = processed / "base-nordeste.csv"
+    if not origem.is_file():
+        raise SystemExit("rode antes a etapa 'dados' (base-nordeste.csv ausente)")
+    base = pd.read_csv(origem)
+
+    treino, teste = dividir_treino_teste(base, cfg)
+    preditores, selecao = selecionar_preditores(
+        treino, colunas_indicadores(base), float(dados["max_ausentes_preditor"])
+    )
+
+    prep = construir_preprocessador(cfg)
+    X_treino = prep.fit_transform(treino[preditores])   # fit SO no treino
+    X_teste = prep.transform(teste[preditores])         # teste: apenas transform
+
+    meta = [c for c in COLUNAS_ID + ["subgrupo_pe_ba", "subgrupo_ride"] if c in base.columns]
+    _csv(treino, processed / "treino.csv")
+    _csv(teste, processed / "teste.csv")
+    for nome, X, d in (("treino", X_treino, treino), ("teste", X_teste, teste)):
+        saida = pd.concat(
+            [d[meta].reset_index(drop=True), X.reset_index(drop=True),
+             d[[ALVO_T1]].reset_index(drop=True)],
+            axis=1,
+        )
+        _csv(saida, processed / f"{nome}-preparado.csv")
+    (processed / "preditores.json").write_text(
+        json.dumps({"alvo": ALVO_T1, "preditores": preditores,
+                    "colunas_preparadas": list(X_treino.columns)}, indent=2),
+        encoding="utf-8",
+    )
+
+    _csv(tabela_tratamento(prep, preditores, treino, teste),
+         tabelas / "preparacao-tratamento-preditores.csv")
+    _csv(selecao, tabelas / "preparacao-selecao-preditores.csv")
+    limites = [float(x) for x in cfg.get("diagnostico", {}).get("limites_alerta_pct", [])]
+    _csv(diagnostico_desbalanceamento({"base": base, "treino": treino, "teste": teste}, limites),
+         tabelas / "preparacao-desbalanceamento-alvo.csv")
+
+    def resumo(nome, d):
+        return {
+            "conjunto": nome, "municipios": len(d),
+            "alvo_t1_media": round(d[ALVO_T1].mean(), 2),
+            "alvo_t1_desvio": round(d[ALVO_T1].std(), 2),
+            "alvo_t1_mediana": round(d[ALVO_T1].median(), 2),
+            "pe_ba": int(d["subgrupo_pe_ba"].sum()),
+            "ride_petrolina_juazeiro": int(d["subgrupo_ride"].sum()),
+            **{f"uf_{uf}": int((d["UF"] == uf).sum()) for uf in sorted(base["UF"].unique())},
+        }
+    _csv(pd.DataFrame([resumo("base", base), resumo("treino", treino), resumo("teste", teste)]),
+         tabelas / "preparacao-split.csv")
+
+    excluidos = selecao.loc[~selecao["selecionado"], "coluna"].tolist()
+    print(
+        f"[features] treino={len(treino)} teste={len(teste)} | preditores={len(preditores)} "
+        f"(excluidos por ausencia no treino: {excluidos}) | "
+        f"colunas apos preparacao={X_treino.shape[1]}"
+    )
 
 
 def etapa_modelos(cfg: dict) -> None:
@@ -147,7 +233,7 @@ def etapa_modelos(cfg: dict) -> None:
       * busca de hiperparametros em CV interna (nunca no teste);
       * log append-only em `saidas.runs` com modelo, params, seed e metricas.
     """
-    raise NotImplementedError("etapa_modelos: implemente o treino e a busca")
+    print("[modelos] pendente: implementada na E4 (baseline de persistencia + 3 familias)")
 
 
 def etapa_avaliacao(cfg: dict) -> None:
@@ -159,7 +245,7 @@ def etapa_avaliacao(cfg: dict) -> None:
       * teste conforme `teste_estatistico` + tamanho de efeito + IC;
       * tabelas em `saidas.tabelas` e figuras em `saidas.figuras`.
     """
-    raise NotImplementedError("etapa_avaliacao: implemente a comparacao estatistica")
+    print("[avaliacao] pendente: implementada na E5 (CV repetida + teste estatistico)")
 
 
 ETAPAS = {
