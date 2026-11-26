@@ -147,7 +147,10 @@ No Nordeste, 2 valores de 2023 estão fora da faixa e não entram na amostra.
 
 ## 6. Qualidade e riscos
 
-Valores medidos no recorte Nordeste:
+Valores medidos no recorte Nordeste. As contagens estão em
+[`../reports/tables/qualidade-alvo-nordeste.csv`](../reports/tables/qualidade-alvo-nordeste.csv),
+e a lista de municípios com alvo extremo ou salto entre os anos está em
+[`../reports/tables/casos-alvo-nordeste.csv`](../reports/tables/casos-alvo-nordeste.csv).
 
 | Item verificado | Resultado | Ação |
 | --------------- | --------- | ---- |

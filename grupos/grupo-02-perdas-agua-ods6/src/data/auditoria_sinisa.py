@@ -9,6 +9,8 @@ usadas em `docs/dicionario-de-dados.md`.
   reports/tables/cobertura-nordeste-uf.csv       cobertura por UF do recorte
   reports/tables/perfil-preditores-nordeste-ref2023.csv  perfil de cada indicador
   reports/tables/hashes-dados-brutos.csv         SHA-256 dos arquivos lidos
+  reports/tables/qualidade-alvo-nordeste.csv     contagens de qualidade do alvo
+  reports/tables/casos-alvo-nordeste.csv         municipios com alvo extremo ou salto
 
 Uso (a partir da pasta do grupo; requer pandas e openpyxl):
     python -m src.data.auditoria_sinisa
@@ -42,6 +44,10 @@ AUDITORIA = {
             "ufs_pe_ba": ["PE", "BA"],
         },
         "max_ausentes_preditor": 0.20,
+        # qualidade do alvo: valores suspeitos e saltos entre os anos
+        "extremo_baixo": 1.0,     # perda <= 1% em algum ano
+        "extremo_alto": 95.0,     # perda >= 95% em algum ano
+        "salto_pp": 30.0,         # variacao absoluta > 30 p.p. entre t e t+1
     },
     "saidas": {"tabelas": "reports/tables/"},
 }
@@ -132,6 +138,65 @@ def resumo(nome: str, d: pd.DataFrame, n_candidatos: int) -> dict:
     }
 
 
+def auditar_alvo(
+    arq_t: Path, aba_t: str, arq_t1: Path, aba_t1: str, dados: dict, validos: pd.DataFrame
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Contagens de qualidade do alvo no recorte (secao 6 do dicionario).
+
+    Usa a aba onde o alvo esta em cada ano, para contar municipios sem
+    depender da juncao entre abas.
+    """
+    alvo, chave = dados["alvo"], dados["chave"]
+    regiao = dados["recorte_macrorregiao"]
+    lo, hi = dados["faixa_alvo"]
+    t, _, _ = ler_aba(arq_t, aba_t)
+    t1, _, _ = ler_aba(arq_t1, aba_t1)
+    reg_t = t[t["Macrorregião"] == regiao]
+    y_t = pd.to_numeric(reg_t[alvo], errors="coerce")
+    texto_t = reg_t.loc[y_t.isna() & reg_t[alvo].notna(), alvo].astype(str).str.strip()
+
+    junto = reg_t[[chave]].merge(t1[[chave, alvo]], on=chave, how="left", indicator=True)
+    sem_linha_t1 = int((junto["_merge"] == "left_only").sum())
+    y_t1_reg = pd.to_numeric(junto[alvo], errors="coerce")
+    nao_num_t1 = int(((junto["_merge"] == "both") & y_t1_reg.isna()).sum())
+    y_t1_br = pd.to_numeric(t1[alvo], errors="coerce")
+
+    a, b = validos["alvo_t"], validos["alvo_t1"]
+    extremo = (a <= dados["extremo_baixo"]) | (b <= dados["extremo_baixo"]) | \
+              (a >= dados["extremo_alto"]) | (b >= dados["extremo_alto"])
+    salto = (b - a).abs() > dados["salto_pp"]
+
+    linhas = [
+        ("municipios_arquivo_t_brasil", len(t), f"linhas com codigo IBGE na aba '{aba_t}'"),
+        ("municipios_arquivo_t_regiao", len(reg_t), f"idem, so {regiao}"),
+        ("municipios_arquivo_t1_brasil", len(t1), f"linhas com codigo IBGE na aba '{aba_t1}'"),
+        ("duplicatas_codigo_t", int(t[chave].duplicated().sum()), "codigos IBGE repetidos em t"),
+        ("duplicatas_codigo_t1", int(t1[chave].duplicated().sum()), "codigos IBGE repetidos em t+1"),
+        ("alvo_t_nao_numerico_regiao", int(y_t.isna().sum()), "alvo de t vazio ou texto 'Nao Calc.'"),
+    ]
+    for texto, n in texto_t.value_counts().items():
+        linhas.append((f"alvo_t_texto: {texto}", int(n), "detalhe do item anterior"))
+    linhas += [
+        ("alvo_t_fora_faixa_regiao", int((y_t.notna() & ~y_t.between(lo, hi)).sum()), f"alvo de t fora de {lo}-{hi}%"),
+        ("sem_linha_em_t1_regiao", sem_linha_t1, "municipios da regiao em t ausentes do arquivo de t+1"),
+        ("alvo_t1_nao_numerico_regiao", nao_num_t1, "presentes em t+1, mas sem valor numerico do alvo"),
+        ("alvo_t1_fora_faixa_brasil", int((y_t1_br.notna() & ~y_t1_br.between(lo, hi)).sum()), f"alvo de t+1 fora de {lo}-{hi}%"),
+        ("pares_validos_regiao", len(validos), "alvo numerico e na faixa nos dois anos"),
+        ("pares_extremos", int(extremo.sum()),
+         f"alvo <= {dados['extremo_baixo']}% ou >= {dados['extremo_alto']}% em algum ano"),
+        ("pares_salto", int(salto.sum()), f"variacao absoluta > {dados['salto_pp']} p.p. entre os anos"),
+    ]
+    for uf in sorted(reg_t["UF"].unique()):
+        linhas.append((f"municipios_arquivo_t1_{uf}", int((t1["UF"] == uf).sum()), "cobertura de t+1 por UF"))
+    qualidade = pd.DataFrame(linhas, columns=["metrica", "valor", "descricao"])
+
+    casos = validos.loc[extremo | salto, [chave, "Município", "UF", "RM/RIDE", "alvo_t", "alvo_t1"]].copy()
+    casos["variacao_pp"] = (casos["alvo_t1"] - casos["alvo_t"]).round(2)
+    casos["extremo"] = extremo[extremo | salto]
+    casos["salto"] = salto[extremo | salto]
+    return qualidade, casos.sort_values(["UF", "Município"])
+
+
 def main() -> None:
     cfg = AUDITORIA
     dados = cfg["dados"]
@@ -213,10 +278,15 @@ def main() -> None:
         })
     pd.DataFrame(linhas).to_csv(saida / f"perfil-preditores-{regiao.lower()}-ref2023.csv", index=False)
 
+    qualidade, casos = auditar_alvo(arq_t, origem[alvo], arq_t1, dados["abas_t1"][0], dados, ne)
+    qualidade.to_csv(saida / f"qualidade-alvo-{regiao.lower()}.csv", index=False)
+    casos.to_csv(saida / f"casos-alvo-{regiao.lower()}.csv", index=False)
+
     print(pd.read_csv(saida / "cobertura-recortes.csv").to_string(index=False))
     print(cob.to_string())
     print(f"candidatos ({regiao}): {len(sel)} -> {sorted(sel)}")
     print("excluidos:", sorted(set(indicadores) - sel - {alvo}))
+    print(qualidade.to_string(index=False))
 
 
 if __name__ == "__main__":

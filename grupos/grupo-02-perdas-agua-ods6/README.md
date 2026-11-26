@@ -72,7 +72,7 @@
 - As tabelas da auditoria são geradas por
   `python -m src.data.auditoria_sinisa` (requer pandas e openpyxl) em
   `reports/tables/` (perfil dos preditores do Nordeste, cobertura por recorte
-  e por UF, hashes). O perfil nacional anterior continua em
+  e por UF, qualidade do alvo, hashes). O perfil nacional anterior continua em
   [`reports/tables/perfil-preditores-ref2023.csv`](reports/tables/perfil-preditores-ref2023.csv)
   como referência.
 
